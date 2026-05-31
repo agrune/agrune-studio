@@ -121,7 +121,7 @@ function upsertTarget(manifest: AgruneManifest, groupId: string, target: Manifes
 }
 
 function buildSelector(args: ParsedArgs): SelectorLadder {
-  const selector: SelectorLadder = {}
+  const selector: Partial<SelectorLadder> = {}
   const role = args.flags.get('role')
   if (typeof role === 'string') {
     selector.role = { name: role }
@@ -138,7 +138,7 @@ function buildSelector(args: ParsedArgs): SelectorLadder {
   assignStringFlag(args, 'css', (value) => {
     selector.css = value
   })
-  return selector
+  return selector as SelectorLadder
 }
 
 function parseArgs(argv: string[]): ParsedArgs {

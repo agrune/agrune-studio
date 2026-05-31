@@ -4,13 +4,17 @@
   "private": true,
   "description": "Agrune Studio CLI MVP for creating, validating, editing, and printing Agrune manifest JSON files.",
   "type": "module",
+  "packageManager": "pnpm@10.23.0",
   "bin": {
     "agrune-studio": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test \"dist/**/*.test.js\"",
+    "build": "pnpm --dir ../agrune/packages/manifest run build && tsc -p tsconfig.json",
+    "test": "pnpm run build && node --test \"dist/**/*.test.js\"",
     "start": "node ./dist/cli.js"
+  },
+  "dependencies": {
+    "@agrune/manifest": "file:../agrune/packages/manifest"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

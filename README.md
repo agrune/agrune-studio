@@ -2,13 +2,13 @@
 
 Agrune Studio CLI MVP for creating, validating, editing, and printing Agrune manifest JSON files.
 
-This project intentionally does not import `@agrune/manifest`. It keeps a small local schema and validator so it can grow into the broader Agrune Studio app later.
+Agrune manifest schema, types, and validation rules are sourced from `@agrune/manifest` in the main Agrune repository. Studio owns the authoring workflow and display layer, while Agrune remains the manifest source of truth.
 
 ## Install
 
 ```sh
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 During local development you can run the compiled CLI directly:
@@ -69,5 +69,5 @@ agrune-studio print agrune.manifest.json
 ## Test
 
 ```sh
-npm test
+pnpm test
 ```
