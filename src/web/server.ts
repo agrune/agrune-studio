@@ -15,9 +15,21 @@ import { runMonkey } from '../monkey/explore.js'
 import { runDiscovery } from '../discover/discover.js'
 import { listCatalog, installPack, runInstalled } from '../pack/catalog.js'
 import { loadPublicKey, readKeysetEnvelope } from '../publish/keystore.js'
+import { startRecording, type RecordController } from '../record/capture.js'
+import { extractScenario } from '../record/extract.js'
+import { readTrail, type RecordingSession } from '../record/trail.js'
 
 const WEB_DIR = fileURLToPath(new URL('../../web/', import.meta.url))
 const RUNS_DIR = join(WEB_DIR, 'runs')
+const RECORDINGS_DIR = join(RUNS_DIR, 'recordings')
+const recorders = new Map<string, RecordController>()
+
+function rewriteRecShots(recording: RecordingSession): RecordingSession {
+  for (const e of recording.entries) {
+    if (e.screenshot) e.screenshot = `/runs/recordings/${recording.id}/${basename(e.screenshot)}`
+  }
+  return recording
+}
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -47,6 +59,7 @@ export interface ServeOptions {
 
 export async function startServer(opts: ServeOptions = {}): Promise<{ url: string; close: () => Promise<void> }> {
   await mkdir(RUNS_DIR, { recursive: true })
+  await mkdir(RECORDINGS_DIR, { recursive: true })
   const host = opts.host ?? '127.0.0.1'
   const port = opts.port ?? 4180
 
@@ -57,7 +70,9 @@ export async function startServer(opts: ServeOptions = {}): Promise<{ url: strin
   })
 
   await new Promise<void>((resolve) => server.listen(port, host, resolve))
-  const url = `http://${host}:${port}`
+  const addr = server.address()
+  const actualPort = typeof addr === 'object' && addr ? addr.port : port
+  const url = `http://${host}:${actualPort}`
   return {
     url,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
@@ -139,6 +154,58 @@ async function route(path: string, body: Record<string, unknown>): Promise<JsonR
         const result = await runInstalled(installDir, String(body.url))
         return { status: 200, body: result }
       }
+      case '/api/record/start': {
+        const id = nextRunId()
+        const controller = await startRecording({
+          url: String(body.url ?? ''),
+          artifactsDir: join(RECORDINGS_DIR, id),
+          ...(body.headless === true ? { headless: true } : {}),
+        })
+        recorders.set(id, controller)
+        return { status: 200, body: { id, url: controller.url } }
+      }
+      case '/api/record/status': {
+        const c = recorders.get(String(body.id))
+        if (!c) return { status: 404, body: { error: 'no such recording (stopped?)' } }
+        return { status: 200, body: { recording: rewriteRecShots(structuredClone(c.recording)) } }
+      }
+      case '/api/record/bug': {
+        const c = recorders.get(String(body.id))
+        if (!c) return { status: 404, body: { error: 'no such recording' } }
+        await c.bug(typeof body.note === 'string' ? body.note : undefined)
+        return { status: 200, body: { ok: true } }
+      }
+      case '/api/record/checkpoint': {
+        const c = recorders.get(String(body.id))
+        if (!c) return { status: 404, body: { error: 'no such recording' } }
+        await c.checkpoint()
+        return { status: 200, body: { ok: true } }
+      }
+      case '/api/record/stop': {
+        const c = recorders.get(String(body.id))
+        if (!c) return { status: 404, body: { error: 'no such recording' } }
+        const recording = await c.stop()
+        recorders.delete(String(body.id))
+        return { status: 200, body: { recording: rewriteRecShots(structuredClone(recording)) } }
+      }
+      case '/api/record/extract': {
+        const recording = await loadRecording(String(body.id))
+        if (!recording) return { status: 404, body: { error: 'no such recording' } }
+        const result = extractScenario(recording, {
+          ...(typeof body.from === 'number' ? { from: body.from } : {}),
+          ...(typeof body.to === 'number' ? { to: body.to } : {}),
+        })
+        return { status: 200, body: result }
+      }
+      case '/api/record/get': {
+        const recording = await loadRecording(String(body.id))
+        if (!recording) return { status: 404, body: { error: 'no such recording' } }
+        return { status: 200, body: { recording: rewriteRecShots(recording) } }
+      }
+      case '/api/record/list': {
+        const items = await listRecordings()
+        return { status: 200, body: { items } }
+      }
       default:
         return { status: 404, body: { error: `unknown endpoint: ${path}` } }
     }
@@ -216,4 +283,34 @@ function sendJson(res: http.ServerResponse, result: JsonResult): void {
 function send(res: http.ServerResponse, status: number, contentType: string, body: string | Buffer): void {
   res.writeHead(status, { 'content-type': contentType })
   res.end(body)
+}
+
+async function loadRecording(id: string): Promise<RecordingSession | null> {
+  const live = recorders.get(id)
+  if (live) return structuredClone(live.recording)
+  try {
+    return await readTrail(join(RECORDINGS_DIR, id))
+  } catch {
+    return null
+  }
+}
+
+async function listRecordings(): Promise<Array<{ id: string; url: string; startedAt: number; entries: number; bookmarks: number }>> {
+  const { readdir } = await import('node:fs/promises')
+  let ids: string[]
+  try {
+    ids = await readdir(RECORDINGS_DIR)
+  } catch {
+    return []
+  }
+  const out: Array<{ id: string; url: string; startedAt: number; entries: number; bookmarks: number }> = []
+  for (const id of ids) {
+    try {
+      const r = await readTrail(join(RECORDINGS_DIR, id))
+      out.push({ id: r.id, url: r.url, startedAt: r.startedAt, entries: r.entries.length, bookmarks: r.bookmarks.length })
+    } catch {
+      // skip dirs without a trail.json
+    }
+  }
+  return out.sort((a, b) => b.startedAt - a.startedAt)
 }
