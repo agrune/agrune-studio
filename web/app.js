@@ -1,6 +1,6 @@
 // Agrune Studio dashboard — talks to the Node backend which drives the real engine.
 
-const state = { url: 'http://127.0.0.1:4178', meta: null, panel: 'scenarios' }
+const state = { url: 'http://127.0.0.1:4178', meta: null, panel: 'scenarios', pendingScenario: null }
 
 // ---- tiny DOM helpers ------------------------------------------------------
 function h(tag, attrs = {}, ...kids) {
@@ -106,6 +106,30 @@ const panels = {
           h('div', { class: 'card' }, h('h3', {}, 'Scenario'), ta, h('div', { class: 'row', style: 'margin-top:12px' }, runBtn, validateBtn)),
           h('div', { class: 'card' }, h('h3', {}, 'Report'), out),
         ),
+      )
+    },
+  },
+
+  recorder: {
+    title: 'Flight Recorder',
+    desc: 'QA 모드 창을 띄워 행동·콘솔·네트워크·스크린샷을 블랙박스로 캡처하고, 버그 순간을 박제해 시나리오로 추출합니다.',
+    render(c) {
+      const out = h('div', {})
+      const startBtn = h('button', { class: 'btn' }, '녹화 시작')
+      startBtn.onclick = async () => {
+        busy(startBtn, true)
+        try {
+          const r = await api('/api/record/start', { url: state.url })
+          recorderSession(out, r.id)
+        } catch (e) { out.replaceChildren(h('div', { class: 'err' }, e.message)) }
+        finally { busy(startBtn, false) }
+      }
+      c.append(
+        h('div', { class: 'card' },
+          h('div', { class: 'row' }, urlField(), h('div', { style: 'align-self:flex-end' }, startBtn)),
+          h('p', { class: 'muted', style: 'margin:10px 0 0' }, '시작하면 QA 모드 브라우저 창이 뜹니다. 그 창에서 평소처럼 앱을 조작하세요. 캡처는 이 창 동안에만 일어납니다.'),
+        ),
+        h('div', { class: 'card', style: 'margin-top:20px' }, out),
       )
     },
   },
@@ -282,11 +306,85 @@ function catalogCard(it, ctx) {
   )
 }
 
+// ---- recorder session (live polling) --------------------------------------
+function recorderSession(out, id) {
+  let polling = true
+  const timeline = h('div', { class: 'steps' })
+  const status = h('div', { class: 'muted' }, 'recording… (창에서 앱을 조작하세요)')
+  const bugBtn = h('button', { class: 'btn sm', style: 'background:#f85149' }, '버그다!')
+  const cpBtn = h('button', { class: 'btn sm ghost' }, '체크포인트')
+  const stopBtn = h('button', { class: 'btn sm ghost' }, '정지')
+  const extractBtn = h('button', { class: 'btn' }, '시나리오 추출')
+  const extractOut = h('div', {})
+
+  bugBtn.onclick = () => api('/api/record/bug', { id }).catch(() => {})
+  cpBtn.onclick = () => api('/api/record/checkpoint', { id }).catch(() => {})
+  stopBtn.onclick = async () => { polling = false; await api('/api/record/stop', { id }).catch(() => {}); status.textContent = 'stopped.' }
+  extractBtn.onclick = async () => {
+    busy(extractBtn, true)
+    try {
+      const r = await api('/api/record/extract', { id })
+      extractOut.replaceChildren(
+        h('div', { class: 'banner pass' }, h('b', {}, '추출됨'), ` ${r.scenario.steps.length} steps`),
+        r.gaps.length ? h('div', { class: 'banner warn', style: 'margin-top:8px' }, `${r.gaps.length} unmapped — 매니페스트에 추가해야 테스트로 박힙니다`) : null,
+        h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'btn sm', onclick: () => sendToScenarios(r.scenario) }, 'Scenarios로 보내기')),
+        h('pre', { class: 'json', style: 'margin-top:10px' }, JSON.stringify(r.scenario, null, 2)),
+      )
+    } catch (e) { extractOut.replaceChildren(h('div', { class: 'err' }, e.message)) }
+    finally { busy(extractBtn, false) }
+  }
+
+  out.replaceChildren(
+    h('div', { class: 'row', style: 'justify-content:space-between' }, status, h('div', { class: 'row' }, bugBtn, cpBtn, stopBtn)),
+    timeline,
+    h('div', { class: 'row', style: 'margin-top:14px' }, extractBtn),
+    extractOut,
+  )
+
+  async function tick() {
+    if (!polling) return
+    try {
+      const r = await api('/api/record/status', { id })
+      renderTimeline(timeline, r.recording)
+    } catch { /* stopped */ }
+    if (polling) setTimeout(tick, 1000)
+  }
+  tick()
+}
+
+function renderTimeline(container, recording) {
+  const isBookmark = (i) => recording.bookmarks.includes(i)
+  container.replaceChildren(...recording.entries.map((e) => {
+    const mark = e.kind === 'action' ? (e.ref ? '✓' : '⚠') : e.kind === 'nav' ? '↪' : '★'
+    const label = e.kind === 'action'
+      ? `${e.action.do} ${e.ref ? e.ref : '(unmapped: ' + (e.action.rawTarget.css || e.action.rawTarget.tag) + ')'}${e.action.value ? ' = "' + e.action.value + '"' : ''}`
+      : e.kind === 'nav' ? `nav → ${e.navUrl}` : e.kind === 'checkpoint' ? 'checkpoint' : (e.note || 'bookmark')
+    const cls = e.kind === 'action' && !e.ref ? 'step skipped' : isBookmark(e.index) || (e.anomalies && e.anomalies.length) ? 'step fail' : 'step pass'
+    const anomaly = e.anomalies && e.anomalies.length ? h('div', { class: 'detail' }, e.anomalies.map((a) => `${a.kind}: ${a.detail}`).join('; ')) : null
+    const thumb = e.screenshot ? h('img', { src: e.screenshot, alt: label, style: 'width:90px;height:56px;object-fit:cover;object-position:top;border:1px solid var(--border);border-radius:6px;cursor:zoom-in', onclick: () => openLightbox(e.screenshot) }) : null
+    return h('div', { class: cls },
+      h('span', { class: 'mark' }, mark),
+      h('div', { style: 'flex:1' }, h('div', { class: 'summary' }, `${e.index + 1}. ${label}`), anomaly),
+      thumb,
+    )
+  }))
+}
+
+function sendToScenarios(scenario) {
+  state.pendingScenario = scenario
+  select('scenarios')
+}
+
 // ---- helpers ---------------------------------------------------------------
 function parse(ta) {
   try { return JSON.parse(ta.value) } catch (e) { throw new Error('scenario JSON parse error: ' + e.message) }
 }
 function sampleScenario() {
+  if (state.pendingScenario) {
+    const p = state.pendingScenario
+    state.pendingScenario = null
+    return p
+  }
   const s = state.meta?.sample ? structuredClone(state.meta.sample) : { schema: 'agrune.scenario/v1', name: 'my scenario', manifest: { schemaVersion: 3 }, steps: [] }
   s.url = state.url
   s.name = 'demo flow'
@@ -303,6 +401,7 @@ function sampleScenario() {
 // ---- shell -----------------------------------------------------------------
 const NAV = [
   ['scenarios', '▶', 'Scenarios'],
+  ['recorder', '⏺', 'Recorder'],
   ['repair', '✚', 'Auto-repair'],
   ['monkey', '🐒', 'Monkey'],
   ['discover', '🧭', 'Discover'],
