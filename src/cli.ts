@@ -11,6 +11,7 @@ import { runMonkeyCli } from './monkey/cli.js'
 import { runDiscoverCli } from './discover/cli.js'
 import { runPackCommand } from './pack/cli.js'
 import { runServeCli } from './web/cli.js'
+import { runRecordCli } from './record/cli.js'
 
 interface ParsedArgs {
   positionals: string[]
@@ -34,6 +35,7 @@ const USAGE = `Usage:
   agrune-studio discover <url> [--scenarios <dir>] [--adopt <i> --out <file>]
   agrune-studio pack <create|publish> ...
   agrune-studio catalog <list|install|run> ...
+  agrune-studio record --url <app> [--out <dir>] [--headless]   # flight recorder
   agrune-studio serve [--port <n>] [--host <h>]    # the web dashboard`
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -55,6 +57,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (command === 'monkey') return await runMonkeyCli(rest)
     if (command === 'discover') return await runDiscoverCli(rest)
     if (command === 'pack' || command === 'catalog') return await runPackCommand(command, rest)
+    if (command === 'record') return await runRecordCli(rest)
     if (command === 'serve') return await runServeCli(rest)
     throw new Error(`unknown command: ${command}\n\n${USAGE}`)
   } catch (err) {
