@@ -5,6 +5,12 @@ import { createEmptyManifest, isActionKind, type AgruneManifest, type ManifestTa
 import { formatValidationErrors, readManifestFile, resolveOutputPath, writeManifestFile } from './io.js'
 import { renderTable } from './table.js'
 import { summarizeManifest, validateManifest } from './validator.js'
+import { runScenarioCli } from './scenario/cli.js'
+import { runPublishCommand } from './publish/cli.js'
+import { runMonkeyCli } from './monkey/cli.js'
+import { runDiscoverCli } from './discover/cli.js'
+import { runPackCommand } from './pack/cli.js'
+import { runServeCli } from './web/cli.js'
 
 interface ParsedArgs {
   positionals: string[]
@@ -15,7 +21,20 @@ const USAGE = `Usage:
   agrune-studio init --out agrune.manifest.json
   agrune-studio validate <file>
   agrune-studio add-target <file> --group <id> --target <id> --action <click|fill|dblclick|contextmenu|hover|longpress> --role <role> [--text <text>] [--css <css>] [--test-id <id>] [--attr <selector>] [--sensitive]
-  agrune-studio print <file>`
+  agrune-studio print <file>
+  agrune-studio scenario new --out <file> [--name <name>]
+  agrune-studio scenario validate <file>
+  agrune-studio scenario run <file> [--url <app>] [--headed] [--artifacts <dir>] [--json]
+  agrune-studio keygen --out <privkey.pem> [--label <name>]
+  agrune-studio admin <init|grant|revoke|list> ...
+  agrune-studio sign <manifest.json> --key <signer.pem> --out <envelope.json> [--origin <o>]
+  agrune-studio publish <envelope.json> --store <dir> --origin <o>
+  agrune-studio verify <envelope.json> --root <rootpub> [--keyset <keyset.json>]
+  agrune-studio monkey <url> [--steps <n>] [--seed <n>] [--out <candidate.json>]
+  agrune-studio discover <url> [--scenarios <dir>] [--adopt <i> --out <file>]
+  agrune-studio pack <create|publish> ...
+  agrune-studio catalog <list|install|run> ...
+  agrune-studio serve [--port <n>] [--host <h>]    # the web dashboard`
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const [command, ...rest] = argv
@@ -29,6 +48,14 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (command === 'validate') return await runValidate(parseArgs(rest))
     if (command === 'add-target') return await runAddTarget(parseArgs(rest))
     if (command === 'print') return await runPrint(parseArgs(rest))
+    if (command === 'scenario') return await runScenarioCli(rest)
+    if (command === 'keygen' || command === 'admin' || command === 'sign' || command === 'publish' || command === 'verify') {
+      return await runPublishCommand(command, rest)
+    }
+    if (command === 'monkey') return await runMonkeyCli(rest)
+    if (command === 'discover') return await runDiscoverCli(rest)
+    if (command === 'pack' || command === 'catalog') return await runPackCommand(command, rest)
+    if (command === 'serve') return await runServeCli(rest)
     throw new Error(`unknown command: ${command}\n\n${USAGE}`)
   } catch (err) {
     console.error((err as Error).message)

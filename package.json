@@ -9,12 +9,15 @@
     "agrune-studio": "./dist/cli.js"
   },
   "scripts": {
-    "build": "pnpm --dir ../agrune/packages/manifest run build && tsc -p tsconfig.json",
+    "build:engine": "pnpm --dir ../agrune run build",
+    "build": "pnpm run build:engine && tsc -p tsconfig.json",
     "test": "pnpm run build && node --test \"dist/**/*.test.js\"",
     "start": "node ./dist/cli.js"
   },
   "dependencies": {
-    "@agrune/manifest": "file:../agrune/packages/manifest"
+    "@agrune/manifest": "link:../agrune/packages/manifest",
+    "agrune": "link:../agrune",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

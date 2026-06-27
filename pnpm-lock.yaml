@@ -9,8 +9,14 @@ importers:
   .:
     dependencies:
       '@agrune/manifest':
-        specifier: file:../agrune/packages/manifest
-        version: file:../agrune/packages/manifest
+        specifier: link:../agrune/packages/manifest
+        version: link:../agrune/packages/manifest
+      agrune:
+        specifier: link:../agrune
+        version: link:../agrune
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -20,9 +26,6 @@ importers:
         version: 5.9.3
 
 packages:
-
-  '@agrune/manifest@file:../agrune/packages/manifest':
-    resolution: {directory: ../agrune/packages/manifest, type: directory}
 
   '@types/node@24.12.4':
     resolution: {integrity: sha512-GUUEShf+PBCGW2KaXwcIt3Yk+e3pkKwWKb9GSyM9WQVE+ep2jzmHdGsHzu4wgcZy5fN9FBdVzjpBQsYlpfpgLA==}
@@ -35,14 +38,10 @@ packages:
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
-  zod@4.4.3:
-    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
-
-  '@agrune/manifest@file:../agrune/packages/manifest':
-    dependencies:
-      zod: 4.4.3
 
   '@types/node@24.12.4':
     dependencies:
@@ -52,4 +51,4 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  zod@4.4.3: {}
+  zod@3.25.76: {}

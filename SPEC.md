@@ -214,8 +214,16 @@ Studio imports the core's manifest truth and verification gates; it never re-imp
    vs. Studio depending on the `agrune` package directly (fewer parts). Recommend re-cut.
 2. **Scenario format:** a typed JSON/YAML step list (portable, diffable, the prior-decision style)
    vs. a recorder that captures steps from a live session vs. both. Decide before Phase 1.
-3. **Admin key-chain:** flat pinned-key set vs. root-signed chain (more scalable/revocable). Decide
-   before Phase 3.
+3. **Admin key-chain:** flat pinned-key set vs. root-signed chain (more scalable/revocable).
+   **DECIDED (2026-06-27): root-signed admin keyset.** Consumers pin ONLY the root (owner) public
+   key. The root signs a *keyset* — the active-admin public keys + a revoked list — and is used only
+   to (re)sign it (grant/revoke), so it lives offline/HSM with minimal exposure. Admins do the
+   frequent signing; an admin-key compromise is contained by the root re-signing the keyset to revoke
+   that one admin, with NO consumer re-pin. The runtime gate (`verifyManifestWithKeyset`) verifies the
+   keyset under the pinned root, then accepts a manifest signed by the root or any active admin —
+   composing the existing single-key `verifyEnvelope`, so there is no weaker path. Per-admin keys give
+   attribution + scoped revocation; a flat pinned set was rejected because revocation would force every
+   consumer to re-pin.
 4. **Assertion vocabulary (now a SECURITY boundary, §5):** the declarative set a step may assert
    (text present, target visible/hidden, URL match, count, network status, …). Must be a closed enum,
    NOT arbitrary expressions, so distributed scenarios stay pure data. Decide the exact set before

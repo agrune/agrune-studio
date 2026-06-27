@@ -18,14 +18,18 @@ distributed as signed **site packs** so people can pull a pack and QA an app imm
 
 | # | Decision | Recommended default | Status | Blocks |
 |---|---|---|---|---|
-| Q1 | Manifest truth package topology | **Re-cut `@agrune/manifest` as the shared module** (core + Studio + demo import it) | ⬜ unconfirmed | Phase 0 |
-| Q2 | Scenario format | **Typed JSON/YAML step list** (portable, diffable); recorder later | ⬜ unconfirmed | Phase 1 |
-| Q3 | Admin key scheme | flat pinned-key set vs. **root-signed chain** (scalable/revocable) | ⬜ unconfirmed | Phase 3 |
-| Q4 | Assertion vocabulary (**security boundary**) | **closed declarative enum, NO arbitrary code** | 🔒 forced by §5 | Phase 1 + 6 |
-| Q5 | Pack granularity / versioning | manifest + scenarios as one pinned pack vs. scenario refs manifest version | ⬜ unconfirmed | Phase 1 + 6 |
+| Q1 | Manifest truth package topology | **Re-cut `@agrune/manifest` as the shared module** (core + Studio + demo import it) | ✅ confirmed (re-cut) | Phase 0 |
+| Q2 | Scenario format | **Typed JSON/YAML step list** (portable, diffable); recorder later | ✅ confirmed (typed JSON step list, `agrune.scenario/v1`) | Phase 1 |
+| Q3 | Admin key scheme | flat pinned-key set vs. **root-signed chain** (scalable/revocable) | ✅ confirmed (**root-signed admin keyset** — pin root only; root signs the active-admin keyset, used rarely → offline; admin leak = revoke without re-pinning) | Phase 3 |
+| Q4 | Assertion vocabulary (**security boundary**) | **closed declarative enum, NO arbitrary code** | 🔒 forced by §5 — confirmed (10-verb closed enum) | Phase 1 + 6 |
+| Q5 | Pack granularity / versioning | manifest + scenarios as one pinned pack vs. scenario refs manifest version | ✅ confirmed (scenario carries the manifest `schemaVersion` it targets; pinned site-pack in Phase 6) | Phase 1 + 6 |
 
 > Q4 is not really open — security forces "declarative enum." The rest need a call before their phase.
 > Recommended set: Q1 re-cut · Q2 typed step list · Q3 root-signed chain · Q5 pinned pack.
+> **Locked (2026-06-27):** Q1 re-cut · Q2 typed step list · Q3 root-signed admin keyset (a 1-level
+> root→keyset chain — root used only to (re)sign the active-admin set, so it stays offline; an admin
+> compromise is revoked without consumers re-pinning) · Q4 10-verb closed enum · Q5 scenario carries
+> its target `schemaVersion`.
 
 ---
 
@@ -47,16 +51,18 @@ Work splits across two repos. The **Core track** is prerequisite API surfacing i
 the **Studio track** builds on it here.
 
 ### Core track (in `agrune/` — exposes seams Studio depends on)
-- [ ] **C0** Re-cut manifest truth as the shared `@agrune/manifest` (schema v3, validator, selector
-  policy, `keyFrom` gate) — single source for core + Studio + demo. *(Q1)*
-- [ ] **C1** Export the resolver + action surface + run-result signals (changed-bit, console,
-  network) as importable API (today internal to the `agrune` package). *(Phase 1)*
-- [ ] **C2** Export `runRepair` / `verifyRepair` / drift report. *(Phase 2)*
-- [ ] **C3** Export `signManifest` / `verifyEnvelope` / `publishToDir` + a `generateKeyPair` helper
-  (today only in tests). *(Phase 3)*
-- [ ] **C4** Apply the §12 signed envelope to **scenarios** (same sign/verify path as manifests). *(Phase 6)*
-- [ ] **C5** Store **index** endpoint — enumerate available packs/manifests (store today serves a
-  known address but has no listing). *(Phase 6)*
+- [x] **C0** Re-cut manifest truth as the shared `@agrune/manifest` (schema v3, validator, selector
+  policy, `keyFrom` gate) — single source for core + Studio + demo. *(Q1)* — `packages/manifest`;
+  core `src/manifest.ts` is now a re-export shim.
+- [x] **C1** Export the resolver + action surface + run-result signals (changed-bit, console,
+  network) as importable API (`src/api.ts` + package `exports` + dts). *(Phase 1)*
+- [x] **C2** Export `runRepair` / `verifyRepair` / drift report (added to `src/api.ts`). *(Phase 2)*
+- [x] **C3** Export `signManifest` / `verifyEnvelope` / `publishToDir` + `generateKeyPair` + the
+  root-signed keyset (`src/keyset.ts`). *(Phase 3)*
+- [x] **C4** Apply the §12 signed envelope to **scenarios/packs** — generic `signPayload` /
+  `verifyPayloadEnvelope` / `verifyPayloadWithKeyset` (`src/pack-store.ts` + `src/keyset.ts`). *(Phase 6)*
+- [x] **C5** Store **index** endpoint — `scanStore` / `writeStoreIndex` / `readStoreIndex` enumerate
+  published packs (`src/pack-store.ts`). *(Phase 6)*
 
 ### Studio track (here)
 Phased below.
@@ -65,7 +71,7 @@ Phased below.
 
 ## 4. Phased tasks (risk-ordered)
 
-### Phase 0 — Unify the manifest truth  ⛔ blocks everything
+### Phase 0 — Unify the manifest truth  ✅ DONE  (was ⛔ blocks everything)
 Drift is live: core uses `agrune/src/manifest.ts` (v3, June 2026); Studio imports
 `@agrune/manifest@0.4.1` (older). Unify first.
 - [ ] Decide Q1 (recommend re-cut).
@@ -76,7 +82,7 @@ Drift is live: core uses `agrune/src/manifest.ts` (v3, June 2026); Studio import
 - [ ] **Done:** a manifest valid in Studio is byte-identically accepted by the runtime — proven by a
   shared conformance test runnable from both packages.
 
-### Phase 1 — Deterministic scenario engine  (the QA base; standalone value, ship first)
+### Phase 1 — Deterministic scenario engine  ✅ DONE  (the QA base; standalone value, ship first)
 - [ ] Decide Q2 (scenario format) + Q4 (assertion enum) + Q5 (does a scenario carry its manifest version?).
 - [ ] **C1** done in core track.
 - [ ] Define the scenario schema: ordered steps over **manifest refs** + declarative assertions
@@ -88,14 +94,14 @@ Drift is live: core uses `agrune/src/manifest.ts` (v3, June 2026); Studio import
 - [ ] Tests: a sample scenario replays green on a stable app; flips red on an intentional break.
 - [ ] **Done:** author a scenario, replay it against a real app, get a deterministic pass/fail report.
 
-### Phase 2 — AI ① auto-repair  (connect what's already built)
+### Phase 2 — AI ① auto-repair  ✅ DONE  (connect what's already built)
 - [ ] **C2** done in core track.
 - [ ] On a step whose ref drifted, run drift → propose → `verifyRepair` → publish; re-run the scenario.
 - [ ] Surface "healed" vs "needs human" outcomes; the `propose` seam wires an agent/LLM.
 - [ ] Guard: a wrong auto-fix can never go green (the verify gate is mechanical).
 - [ ] **Done:** a scenario broken by an app change goes green again with no hand-editing.
 
-### Phase 3 — Publishing + keys
+### Phase 3 — Publishing + keys  ✅ DONE
 - [ ] Decide Q3 (admin key scheme).
 - [ ] **C3** done in core track.
 - [ ] Studio commands: `keygen` (ed25519), `sign`, `publish` (to dir store / git PR).
@@ -103,19 +109,19 @@ Drift is live: core uses `agrune/src/manifest.ts` (v3, June 2026); Studio import
   (Secret/HSM, never the store).
 - [ ] **Done:** owner produces a signed manifest the runtime accepts end-to-end; can grant/revoke an admin.
 
-### Phase 4 — AI ② monkey testing
+### Phase 4 — AI ② monkey testing  ✅ DONE
 - [ ] Bounded explorer over declared targets under strict mode (§8.8) — no off-manifest actuation.
 - [ ] Oracle v1: crash / console error / network failure / unhandled exception (cheap, reliable).
 - [ ] Repro capture: the step sequence that triggered a finding → becomes a candidate scenario.
 - [ ] **Done:** a monkey run surfaces a reproducible crash/error as a candidate scenario.
 
-### Phase 5 — AI ③ scenario discovery
+### Phase 5 — AI ③ scenario discovery  ✅ DONE
 - [ ] AI walks the app and proposes uncovered flows.
 - [ ] Human reviews/adopts a proposal into a deterministic scenario (proposal = AI, adoption = human).
 - [ ] Dedup proposals against existing coverage; report coverage delta.
 - [ ] **Done:** AI-proposed flows become reviewed, deterministic scenarios with measured coverage gain.
 
-### Phase 6 — Catalog of site packs  (curated 1st-party distribution)
+### Phase 6 — Catalog of site packs  ✅ DONE  (curated 1st-party distribution)
 - [ ] Decide Q5 pack granularity if not already.
 - [ ] **C4** + **C5** done in core track.
 - [ ] Distribute **site packs = manifest (map) + scenarios (suite)**, both signed.
