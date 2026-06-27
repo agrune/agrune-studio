@@ -4,7 +4,7 @@
 // per-step screenshots are served back to the UI. No engine logic is re-implemented — this only wires.
 
 import http from 'node:http'
-import { readFile, mkdir } from 'node:fs/promises'
+import { readFile, mkdir, readdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { basename, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,10 +25,11 @@ const RECORDINGS_DIR = join(RUNS_DIR, 'recordings')
 const recorders = new Map<string, RecordController>()
 
 function rewriteRecShots(recording: RecordingSession): RecordingSession {
-  for (const e of recording.entries) {
-    if (e.screenshot) e.screenshot = `/runs/recordings/${recording.id}/${basename(e.screenshot)}`
+  const copy = structuredClone(recording)
+  for (const e of copy.entries) {
+    if (e.screenshot) e.screenshot = `/runs/recordings/${copy.id}/${basename(e.screenshot)}`
   }
-  return recording
+  return copy
 }
 
 const MIME: Record<string, string> = {
@@ -167,7 +168,7 @@ async function route(path: string, body: Record<string, unknown>): Promise<JsonR
       case '/api/record/status': {
         const c = recorders.get(String(body.id))
         if (!c) return { status: 404, body: { error: 'no such recording (stopped?)' } }
-        return { status: 200, body: { recording: rewriteRecShots(structuredClone(c.recording)) } }
+        return { status: 200, body: { recording: rewriteRecShots(c.recording) } }
       }
       case '/api/record/bug': {
         const c = recorders.get(String(body.id))
@@ -186,7 +187,7 @@ async function route(path: string, body: Record<string, unknown>): Promise<JsonR
         if (!c) return { status: 404, body: { error: 'no such recording' } }
         const recording = await c.stop()
         recorders.delete(String(body.id))
-        return { status: 200, body: { recording: rewriteRecShots(structuredClone(recording)) } }
+        return { status: 200, body: { recording: rewriteRecShots(recording) } }
       }
       case '/api/record/extract': {
         const recording = await loadRecording(String(body.id))
@@ -296,7 +297,6 @@ async function loadRecording(id: string): Promise<RecordingSession | null> {
 }
 
 async function listRecordings(): Promise<Array<{ id: string; url: string; startedAt: number; entries: number; bookmarks: number }>> {
-  const { readdir } = await import('node:fs/promises')
   let ids: string[]
   try {
     ids = await readdir(RECORDINGS_DIR)
