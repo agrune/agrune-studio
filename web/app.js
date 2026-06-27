@@ -121,8 +121,8 @@ const panels = {
         try {
           const r = await api('/api/record/start', { url: state.url })
           recorderSession(out, r.id)
-        } catch (e) { out.replaceChildren(h('div', { class: 'err' }, e.message)) }
-        finally { busy(startBtn, false) }
+          startBtn.disabled = true; startBtn.textContent = '녹화 중…'
+        } catch (e) { out.replaceChildren(h('div', { class: 'err' }, e.message)); busy(startBtn, false) }
       }
       c.append(
         h('div', { class: 'card' },
@@ -326,7 +326,7 @@ function recorderSession(out, id) {
       const r = await api('/api/record/extract', { id })
       extractOut.replaceChildren(
         h('div', { class: 'banner pass' }, h('b', {}, '추출됨'), ` ${r.scenario.steps.length} steps`),
-        r.gaps.length ? h('div', { class: 'banner warn', style: 'margin-top:8px' }, `${r.gaps.length} unmapped — 매니페스트에 추가해야 테스트로 박힙니다`) : null,
+        r.gaps?.length ? h('div', { class: 'banner warn', style: 'margin-top:8px' }, `${r.gaps?.length} unmapped — 매니페스트에 추가해야 테스트로 박힙니다`) : null,
         h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'btn sm', onclick: () => sendToScenarios(r.scenario) }, 'Scenarios로 보내기')),
         h('pre', { class: 'json', style: 'margin-top:10px' }, JSON.stringify(r.scenario, null, 2)),
       )
@@ -346,7 +346,7 @@ function recorderSession(out, id) {
     try {
       const r = await api('/api/record/status', { id })
       renderTimeline(timeline, r.recording)
-    } catch { /* stopped */ }
+    } catch (err) { if (polling) console.warn('recorder poll error', err) }
     if (polling) setTimeout(tick, 1000)
   }
   tick()
@@ -354,17 +354,17 @@ function recorderSession(out, id) {
 
 function renderTimeline(container, recording) {
   const isBookmark = (i) => recording.bookmarks.includes(i)
-  container.replaceChildren(...recording.entries.map((e) => {
+  container.replaceChildren(...recording.entries.map((e, i) => {
     const mark = e.kind === 'action' ? (e.ref ? '✓' : '⚠') : e.kind === 'nav' ? '↪' : '★'
     const label = e.kind === 'action'
       ? `${e.action.do} ${e.ref ? e.ref : '(unmapped: ' + (e.action.rawTarget.css || e.action.rawTarget.tag) + ')'}${e.action.value ? ' = "' + e.action.value + '"' : ''}`
       : e.kind === 'nav' ? `nav → ${e.navUrl}` : e.kind === 'checkpoint' ? 'checkpoint' : (e.note || 'bookmark')
-    const cls = e.kind === 'action' && !e.ref ? 'step skipped' : isBookmark(e.index) || (e.anomalies && e.anomalies.length) ? 'step fail' : 'step pass'
+    const cls = e.kind === 'action' && !e.ref ? 'step skipped' : isBookmark(i) || (e.anomalies && e.anomalies.length) ? 'step fail' : 'step pass'
     const anomaly = e.anomalies && e.anomalies.length ? h('div', { class: 'detail' }, e.anomalies.map((a) => `${a.kind}: ${a.detail}`).join('; ')) : null
     const thumb = e.screenshot ? h('img', { src: e.screenshot, alt: label, style: 'width:90px;height:56px;object-fit:cover;object-position:top;border:1px solid var(--border);border-radius:6px;cursor:zoom-in', onclick: () => openLightbox(e.screenshot) }) : null
     return h('div', { class: cls },
       h('span', { class: 'mark' }, mark),
-      h('div', { style: 'flex:1' }, h('div', { class: 'summary' }, `${e.index + 1}. ${label}`), anomaly),
+      h('div', { style: 'flex:1' }, h('div', { class: 'summary' }, `${i + 1}. ${label}`), anomaly),
       thumb,
     )
   }))
