@@ -41,6 +41,7 @@ export async function startRecording(opts: StartOptions): Promise<RecordControll
 
   // serialize event handling so screenshots/deltas never race
   let queue: Promise<void> = Promise.resolve()
+  let stopping = false
   const enqueue = (fn: () => Promise<void>): Promise<void> => {
     queue = queue.then(fn).catch(() => undefined)
     return queue
@@ -109,6 +110,7 @@ export async function startRecording(opts: StartOptions): Promise<RecordControll
   const elapsed = (): number => Date.now() - startedAt
 
   await browser.page().context().exposeBinding(BINDING, (_src: unknown, payload: Record<string, unknown>) => {
+    if (stopping) return
     const type = payload?.type
     if (type === 'action') {
       void enqueue(() =>
@@ -143,7 +145,12 @@ export async function startRecording(opts: StartOptions): Promise<RecordControll
     bug: (note?: string) => enqueue(() => addBookmark('bookmark', elapsed(), note)),
     checkpoint: () => enqueue(() => addBookmark('checkpoint', elapsed())),
     async stop(): Promise<RecordingSession> {
-      await queue // drain in-flight events
+      if (stopping) {
+        await queue
+        return recording
+      }
+      stopping = true
+      await queue
       await writeTrail(opts.artifactsDir, recording)
       await browser.stop().catch(() => undefined)
       return recording
