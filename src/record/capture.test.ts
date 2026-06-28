@@ -11,13 +11,17 @@ import { readTrail } from './trail.js'
 
 const manifest = {
   version: 3,
-  groups: [{ groupId: 'app', targets: [{ targetId: 'go', name: 'Go', actionKinds: ['click'], selector: { css: '#go' } }] }],
+  groups: [{ groupId: 'app', targets: [
+    { targetId: 'go', name: 'Go', actionKinds: ['click'], selector: { css: '#go' } },
+    { targetId: 'pwd', name: 'Password', sensitive: true, actionKinds: ['fill'], selector: { css: '#pwd' } },
+  ] }],
 }
 
 function pageHtml(): string {
   return `<!doctype html><html><head><title>Capture</title></head><body>
 <button id="go">Go</button>
 <div id="plain">plain</div>
+<input id="pwd" type="password" />
 <script>window.__agrune_manifest__ = ${JSON.stringify(manifest)};</script>
 </body></html>`
 }
@@ -83,6 +87,29 @@ describe('capture controller (real chromium)', () => {
     } finally {
       await ctrl.stop().catch(() => undefined)
       await rm(dir, { recursive: true, force: true })
+      await app.close()
+    }
+  })
+
+  it('routes a sensitive field value into the vault, not the trail', async (t) => {
+    if (!available) return t.skip('chromium unavailable')
+    const app = await serve()
+    const dir = await mkdtemp(path.join(tmpdir(), 'rec-'))
+    const secdir = await mkdtemp(path.join(tmpdir(), 'sec-'))
+    const ctrl = await startRecording({ url: app.url, artifactsDir: dir, secretsDir: secdir, headless: true })
+    try {
+      await ctrl.browser.page().locator('#pwd').fill('hunter2')
+      await ctrl.browser.page().locator('#pwd').press('Tab') // fire change
+      await waitFor(() => ctrl.recording.entries.some((e) => e.action?.do === 'fill' && e.ref === 'pwd'))
+      const entry = ctrl.recording.entries.find((e) => e.ref === 'pwd')!
+      assert.equal(entry.action!.value, undefined, 'plaintext must not be in the trail')
+      assert.equal(entry.action!.secretRef, 'rec1__pwd'.replace('rec1', ctrl.recording.id))
+      const { resolveSecret } = await import('./secrets.js')
+      assert.equal(await resolveSecret(secdir, entry.action!.secretRef!), 'hunter2')
+    } finally {
+      await ctrl.stop().catch(() => undefined)
+      await rm(dir, { recursive: true, force: true })
+      await rm(secdir, { recursive: true, force: true })
       await app.close()
     }
   })

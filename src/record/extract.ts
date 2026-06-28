@@ -36,7 +36,7 @@ export function extractScenario(session: RecordingSession, opts: ExtractOptions 
   for (const e of slice) {
     if (e.kind === 'action' && e.action) {
       if (e.ref) {
-        steps.push(toActionStep(e.ref, e.action.do, e.action.value))
+        steps.push(toActionStep(e.ref, e.action.do, e.action.value, e.action.secretRef))
         lastActionRef = e.ref
       } else {
         gaps.push({ index: e.index, rawTarget: e.action.rawTarget, reason: 'not declared in manifest' })
@@ -63,10 +63,10 @@ export function extractScenario(session: RecordingSession, opts: ExtractOptions 
   return { scenario, gaps }
 }
 
-function toActionStep(ref: string, verb: string, value?: string): Step {
+function toActionStep(ref: string, verb: string, value?: string, secretRef?: string): Step {
   switch (verb) {
     case 'fill':
-      return { do: 'fill', ref, value: value ?? '' }
+      return secretRef ? { do: 'fill', ref, secretRef } : { do: 'fill', ref, value: value ?? '' }
     case 'select':
       return { do: 'select', ref, value: value ?? '' }
     case 'check':

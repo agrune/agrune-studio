@@ -10,6 +10,7 @@ export interface RefMatch {
   ref: string
   targetId: string
   rank: number
+  sensitive: boolean
 }
 
 export async function mapHitToRef(browser: BrowserSession, nonce: string): Promise<RefMatch | null> {
@@ -33,11 +34,11 @@ export async function mapHitToRef(browser: BrowserSession, nonce: string): Promi
     }
     // rank 0: the hit element IS the target element
     const exact = await targetLoc.and(hitLoc).count().catch(() => 0)
-    if (exact > 0) return { ref, targetId: t.targetId, rank: 0 }
+    if (exact > 0) return { ref, targetId: t.targetId, rank: 0, sensitive: t.sensitive === true }
     // rank 1: the target contains the hit element (clicked a child of the target)
     if (!best) {
       const contains = await targetLoc.locator(hitSelector).count().catch(() => 0)
-      if (contains > 0) best = { ref, targetId: t.targetId, rank: 1 }
+      if (contains > 0) best = { ref, targetId: t.targetId, rank: 1, sensitive: t.sensitive === true }
     }
   }
   return best

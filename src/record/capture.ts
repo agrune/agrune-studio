@@ -7,6 +7,7 @@ import { BrowserSession } from 'agrune'
 import { BINDING, CAPTURE_SCRIPT } from './inject.js'
 import { mapHitToRef } from './refmap.js'
 import { newTracker, pollOracle, type OracleTracker } from './oracle.js'
+import { setSecret } from './secrets.js'
 import { appendEntry, createRecordingSession, writeTrail, type ActionVerb, type RawTarget, type RecordingSession } from './trail.js'
 
 export interface StartOptions {
@@ -14,6 +15,8 @@ export interface StartOptions {
   artifactsDir: string
   /** 기본 false(헤디드 — 유저가 보는 QA 창). 테스트는 true. */
   headless?: boolean
+  /** Directory of the write-only secret vault; sensitive fills store their value here. */
+  secretsDir?: string
 }
 
 export interface RecordController {
@@ -76,10 +79,19 @@ export async function startRecording(opts: StartOptions): Promise<RecordControll
     const match = await mapHitToRef(browser, p.nonce).catch(() => null)
     const screenshot = await shot()
     const { console: c, network: n } = deltas()
+
+    let value = p.value
+    let secretRef: string | undefined
+    if (match?.sensitive && p.do === 'fill') {
+      secretRef = `${recording.id}__${match.ref}`
+      if (opts.secretsDir && p.value !== undefined) await setSecret(opts.secretsDir, secretRef, p.value).catch(() => undefined)
+      value = undefined // never store the plaintext in the trail
+    }
+
     const entry = appendEntry(recording, {
       t: p.t,
       kind: 'action',
-      action: { do: p.do, value: p.value, rawTarget: p.rawTarget },
+      action: { do: p.do, value, secretRef, rawTarget: p.rawTarget },
       ref: match?.ref ?? null,
       refMeta: match ? { rank: match.rank } : undefined,
       console: c,

@@ -59,4 +59,15 @@ describe('extractScenario', () => {
     assert.ok(scenario.steps.length >= 1)
     assert.ok(validateScenario(scenario).ok)
   })
+
+  it('emits a secretRef fill (no value) for a sensitive-captured action', () => {
+    const s = createRecordingSession('rec1', 'http://app/', 0)
+    appendEntry(s, { t: 1, kind: 'action', action: { do: 'fill', secretRef: 'rec1__pwd', rawTarget: { tag: 'input' } }, ref: 'pwd', console: [], network: [] })
+    const { scenario } = extractScenario(s)
+    const fill = scenario.steps.find((st) => 'do' in st && st.do === 'fill') as Record<string, unknown>
+    assert.equal(fill.secretRef, 'rec1__pwd')
+    assert.equal(fill.value, undefined)
+    assert.ok(!JSON.stringify(scenario).includes('hunter2')) // no plaintext anywhere
+    assert.ok(validateScenario(scenario).ok)
+  })
 })

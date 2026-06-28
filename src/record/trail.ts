@@ -27,7 +27,7 @@ export interface TimelineEntry {
   /** 세션 시작 기준 상대 ms. */
   t: number
   kind: EntryKind
-  action?: { do: ActionVerb; value?: string; rawTarget: RawTarget }
+  action?: { do: ActionVerb; value?: string; secretRef?: string; rawTarget: RawTarget }
   /** 네비게이션 엔트리(kind==='nav')의 도착 URL. */
   navUrl?: string
   /** 역매핑된 매니페스트 ref(agent 형식). 실패 시 null. */
