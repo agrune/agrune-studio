@@ -104,6 +104,7 @@ describe('capture controller (real chromium)', () => {
       const entry = ctrl.recording.entries.find((e) => e.ref === 'pwd')!
       assert.equal(entry.action!.value, undefined, 'plaintext must not be in the trail')
       assert.equal(entry.action!.secretRef, 'rec1__pwd'.replace('rec1', ctrl.recording.id))
+      assert.equal(entry.screenshot, undefined, 'sensitive fill must not capture a screenshot')
       const { resolveSecret } = await import('./secrets.js')
       assert.equal(await resolveSecret(secdir, entry.action!.secretRef!), 'hunter2')
     } finally {

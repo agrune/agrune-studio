@@ -79,12 +79,13 @@ export async function startRecording(opts: StartOptions): Promise<RecordControll
 
   async function handleAction(p: { do: ActionVerb; value?: string; nonce: string; rawTarget: RawTarget; t: number }): Promise<void> {
     const match = await mapHitToRef(browser, p.nonce).catch(() => null)
-    const screenshot = await shot()
+    const isSensitive = !!(match?.sensitive && p.do === 'fill')
+    const screenshot = isSensitive ? undefined : await shot()
     const { console: c, network: n } = deltas()
 
     let value = p.value
     let secretRef: string | undefined
-    if (match?.sensitive && p.do === 'fill') {
+    if (isSensitive) {
       secretRef = `${recording.id}__${match.ref}`
       if (opts.secretsDir && p.value !== undefined) await setSecret(opts.secretsDir, secretRef, p.value).catch(() => undefined)
       value = undefined // never store the plaintext in the trail
