@@ -17,6 +17,8 @@ export interface StartOptions {
   headless?: boolean
   /** Directory of the write-only secret vault; sensitive fills store their value here. */
   secretsDir?: string
+  /** Called after an auto-stop triggered by the QA window/page closing. */
+  onClosed?: () => void
 }
 
 export interface RecordController {
@@ -149,6 +151,26 @@ export async function startRecording(opts: StartOptions): Promise<RecordControll
   tracker.errors = 0
   tracker.failures = 0
 
+  let closedHandled = false
+  const doStop = async (): Promise<RecordingSession> => {
+    if (stopping) {
+      await queue
+      return recording
+    }
+    stopping = true
+    await queue
+    await writeTrail(opts.artifactsDir, recording)
+    await browser.stop().catch(() => undefined)
+    return recording
+  }
+
+  // QA mode = window lifetime: if the user closes the page/window, persist + clean up gracefully.
+  browser.page().on('close', () => {
+    if (closedHandled) return
+    closedHandled = true
+    void doStop().then(() => opts.onClosed?.())
+  })
+
   return {
     id,
     url: opts.url,
@@ -156,16 +178,6 @@ export async function startRecording(opts: StartOptions): Promise<RecordControll
     browser,
     bug: (note?: string) => enqueue(() => addBookmark('bookmark', elapsed(), note)),
     checkpoint: () => enqueue(() => addBookmark('checkpoint', elapsed())),
-    async stop(): Promise<RecordingSession> {
-      if (stopping) {
-        await queue
-        return recording
-      }
-      stopping = true
-      await queue
-      await writeTrail(opts.artifactsDir, recording)
-      await browser.stop().catch(() => undefined)
-      return recording
-    },
+    stop: doStop,
   }
 }

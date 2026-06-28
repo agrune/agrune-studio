@@ -18,10 +18,12 @@ import { loadPublicKey, readKeysetEnvelope } from '../publish/keystore.js'
 import { startRecording, type RecordController } from '../record/capture.js'
 import { extractScenario } from '../record/extract.js'
 import { readTrail, type RecordingSession } from '../record/trail.js'
+import { setSecret } from '../record/secrets.js'
 
 const WEB_DIR = fileURLToPath(new URL('../../web/', import.meta.url))
 const RUNS_DIR = join(WEB_DIR, 'runs')
 const RECORDINGS_DIR = join(RUNS_DIR, 'recordings')
+const SECRETS_DIR = join(RUNS_DIR, 'secrets')
 const recorders = new Map<string, RecordController>()
 
 function rewriteRecShots(recording: RecordingSession): RecordingSession {
@@ -61,6 +63,7 @@ export interface ServeOptions {
 export async function startServer(opts: ServeOptions = {}): Promise<{ url: string; close: () => Promise<void> }> {
   await mkdir(RUNS_DIR, { recursive: true })
   await mkdir(RECORDINGS_DIR, { recursive: true })
+  await mkdir(SECRETS_DIR, { recursive: true })
   const host = opts.host ?? '127.0.0.1'
   const port = opts.port ?? 4180
 
@@ -114,6 +117,7 @@ async function route(path: string, body: Record<string, unknown>): Promise<JsonR
           ...(typeof body.url === 'string' ? { url: body.url } : {}),
           artifactsDir: join(RUNS_DIR, runId),
           screenshots: true,
+          secretsDir: SECRETS_DIR,
         })
         rewriteShots(report.steps, runId)
         return { status: 200, body: report }
@@ -160,6 +164,8 @@ async function route(path: string, body: Record<string, unknown>): Promise<JsonR
         const controller = await startRecording({
           url: String(body.url ?? ''),
           artifactsDir: join(RECORDINGS_DIR, id),
+          secretsDir: SECRETS_DIR,
+          onClosed: () => recorders.delete(id),
           ...(body.headless === true ? { headless: true } : {}),
         })
         recorders.set(id, controller)
@@ -206,6 +212,13 @@ async function route(path: string, body: Record<string, unknown>): Promise<JsonR
       case '/api/record/list': {
         const items = await listRecordings()
         return { status: 200, body: { items } }
+      }
+      case '/api/secret/set': {
+        const name = String(body.name ?? '')
+        const value = String(body.value ?? '')
+        if (!name) return { status: 400, body: { error: 'missing name' } }
+        await setSecret(SECRETS_DIR, name, value)
+        return { status: 200, body: { ok: true } } // never echo the value back
       }
       default:
         return { status: 404, body: { error: `unknown endpoint: ${path}` } }
