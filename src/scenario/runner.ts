@@ -4,6 +4,7 @@
 
 import path from 'node:path'
 import { BrowserSession, normalizeAgentTargetId, type AgruneManifest, type PageSnapshot, type PageTarget } from 'agrune'
+import { resolveSecret } from '../record/secrets.js'
 import { isAssertionStep, type ActionStep, type AssertionStep, type Scenario, type Step } from './schema.js'
 import type { ScenarioReport, StepResult } from './report.js'
 
@@ -22,6 +23,8 @@ export interface RunOptions {
    * every navigation so it survives page loads.
    */
   manifestOverride?: AgruneManifest
+  /** Directory of the write-only secret vault; fills with `secretRef` resolve from here. */
+  secretsDir?: string
 }
 
 /** Step ref for action steps (drives repair targeting); undefined for assertions / navigate / wait. */
@@ -42,12 +45,16 @@ export async function injectManifestOverride(session: BrowserSession, manifest: 
 }
 
 /** Execute one step; throws on action/assertion failure. Returns the changed-bit when available. */
-export async function executeStep(session: BrowserSession, step: Step): Promise<{ changed?: boolean }> {
+export async function executeStep(
+  session: BrowserSession,
+  step: Step,
+  opts: { secretsDir?: string } = {},
+): Promise<{ changed?: boolean }> {
   if (isAssertionStep(step)) {
     await evaluateAssertion(session, step)
     return {}
   }
-  return { changed: await performAction(session, step) }
+  return { changed: await performAction(session, step, opts.secretsDir) }
 }
 
 class StepFailure extends Error {}
@@ -96,7 +103,7 @@ export async function runScenario(scenario: Scenario, opts: RunOptions = {}): Pr
       let detail: string | undefined
       let changed: boolean | undefined
       try {
-        const out = await executeStep(session, step)
+        const out = await executeStep(session, step, { secretsDir: opts.secretsDir })
         changed = out.changed
         // re-assert the healed map after a navigation reset it
         if (opts.manifestOverride && !isAssertionStep(step) && step.do === 'navigate') {
@@ -146,7 +153,7 @@ export async function runScenario(scenario: Scenario, opts: RunOptions = {}): Pr
 // ---- actions ---------------------------------------------------------------
 
 /** Execute one action step; returns the changed-bit when the engine surfaces it. */
-async function performAction(session: BrowserSession, step: ActionStep): Promise<boolean | undefined> {
+async function performAction(session: BrowserSession, step: ActionStep, secretsDir?: string): Promise<boolean | undefined> {
   switch (step.do) {
     case 'navigate':
       await session.navigate(step.url)
@@ -160,7 +167,14 @@ async function performAction(session: BrowserSession, step: ActionStep): Promise
       return res.changed
     }
     case 'fill': {
-      const res = await session.fill(undefined, step.ref, step.value, step.clear ?? true)
+      let value = step.value
+      if (step.secretRef !== undefined) {
+        if (!secretsDir) throw new StepFailure(`fill "${step.ref}" needs a secret "${step.secretRef}" but no secrets vault is configured`)
+        const resolved = await resolveSecret(secretsDir, step.secretRef)
+        if (resolved === undefined) throw new StepFailure(`secret not set: "${step.secretRef}"`)
+        value = resolved
+      }
+      const res = await session.fill(undefined, step.ref, value ?? '', step.clear ?? true)
       return res.changed
     }
     case 'type':
@@ -337,7 +351,7 @@ function summarizeStep(step: Step): string {
     case 'navigate':
       return `navigate ${step.url}${label}`
     case 'fill':
-      return `fill ${step.ref} = "${step.value}"${label}`
+      return `fill ${step.ref} = ${step.secretRef ? `<secret ${step.secretRef}>` : `"${step.value}"`}${label}`
     case 'type':
       return `type ${step.ref} "${step.text}"${label}`
     case 'press':

@@ -19,8 +19,18 @@ const ClickStep = z
   .object({ do: z.enum(['click', 'dblclick', 'contextmenu', 'hover', 'longpress']), ref: z.string().min(1), ...Label })
   .strict()
 const FillStep = z
-  .object({ do: z.literal('fill'), ref: z.string().min(1), value: z.string(), clear: z.boolean().optional(), ...Label })
+  .object({
+    do: z.literal('fill'),
+    ref: z.string().min(1),
+    value: z.string().optional(),
+    secretRef: z.string().min(1).optional(),
+    clear: z.boolean().optional(),
+    ...Label,
+  })
   .strict()
+  .refine((s) => (s.value === undefined) !== (s.secretRef === undefined), {
+    message: 'fill requires exactly one of value or secretRef',
+  })
 const TypeStep = z
   .object({ do: z.literal('type'), ref: z.string().min(1), text: z.string(), submit: z.boolean().optional(), ...Label })
   .strict()
