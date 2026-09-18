@@ -1,26 +1,28 @@
+import type { Scenario } from '../scenario';
+
 export type EngineStatus = 'idle' | 'starting' | 'ready' | 'error';
-export type RunStatus = 'idle' | 'running' | 'paused' | 'passed' | 'failed' | 'stopped';
+export type RunStatus = 'idle' | 'running' | 'paused' | 'stopping' | 'finalizing' | 'passed' | 'failed' | 'stopped';
 export type StepStatus = 'queued' | 'running' | 'passed' | 'failed' | 'skipped';
+export type ScenarioSource = 'built-in' | 'workspace';
 
-export type ScenarioStep =
-  | { id: string; kind: 'open'; label: string; url: string }
-  | { id: string; kind: 'click'; label: string; target: string }
-  | { id: string; kind: 'fill'; label: string; target: string; value: string; sensitive?: boolean }
-  | { id: string; kind: 'expect-text'; label: string; value: string }
-  | { id: string; kind: 'expect-target'; label: string; target: string }
-  | { id: string; kind: 'wait'; label: string; durationMs: number };
-
-export interface ScenarioDefinition {
-  id: string;
-  title: string;
-  intent: string;
-  tags: string[];
-  estimatedMs: number;
-  steps: ScenarioStep[];
+export interface StudioScenarioItem {
+  /** Stable Studio library key. This remains present when scenario.id is omitted. */
+  key: string;
+  source: ScenarioSource;
+  readOnly: boolean;
+  /** Path relative to the workspace scenario directory. */
+  fileName?: string;
+  document: Scenario;
+  modifiedAt?: string;
 }
 
 export interface StepRunState {
+  index: number;
   id: string;
+  summary: string;
+  family: 'action' | 'assertion';
+  kind: string;
+  targetRef?: string;
   status: StepStatus;
   startedAt?: number;
   durationMs?: number;
@@ -31,19 +33,69 @@ export interface ActivityEntry {
   id: string;
   timestamp: number;
   tone: 'neutral' | 'info' | 'success' | 'warning' | 'error';
+  kind: 'system' | 'perception' | 'resolution' | 'action' | 'assertion' | 'artifact' | 'error';
   title: string;
   detail?: string;
+  stepId?: string;
+  targetRef?: string;
+  durationMs?: number;
 }
 
-export interface BrowserTargetFocus {
+export interface ManifestTargetView {
   targetId: string;
+  groupId: string;
+  groupName?: string;
+  name: string;
+  description: string;
+  actionKinds: string[];
+  selector: string;
+  visible: boolean;
+  inViewport: boolean;
+  enabled: boolean;
+  covered: boolean;
+  actionable: boolean;
+  reason: string;
+  domResolved: boolean;
+  overlay: boolean;
+  sensitive: boolean;
+  textPreview?: string;
+  repeat?: { repeatId: string; index: number; key: string };
+  source?: { file: string; line: number; column: number };
+}
+
+export interface ManifestGroupView {
+  groupId: string;
+  name?: string;
+  description?: string;
+  targetIds: string[];
+}
+
+export interface ResolutionEvidence {
+  ref: string;
+  status: 'resolved' | 'recovered' | 'unresolved' | 'ambiguous' | 'pending';
+  capturedAt: number;
+  target?: ManifestTargetView;
+  message?: string;
+  recovery?: {
+    engine: 'playwright';
+    causeCode: 'MANIFEST_NOT_FOUND' | 'TARGET_NOT_FOUND';
+    strategy: 'role' | 'label' | 'placeholder' | 'testId';
+    query: string;
+    matchCount: number;
+  };
+}
+
+export interface ArtifactView {
+  id: string;
+  kind: 'trace' | 'screenshot' | 'run-log';
   label: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  viewportWidth: number;
-  viewportHeight: number;
+  path: string;
+  createdAt: number;
+}
+
+export interface WorkspaceIssue {
+  path: string;
+  message: string;
 }
 
 export interface StudioState {
@@ -55,59 +107,94 @@ export interface StudioState {
     name: string;
     path: string;
     baseUrl: string;
+    manifestPath: string;
+    scenarioDir: string;
+    artifactDir: string;
+    configured: boolean;
+    issues: WorkspaceIssue[];
   };
   browser: {
     connected: boolean;
     loading: boolean;
+    headed: true;
     url: string;
     title: string;
-    viewport: { width: number; height: number };
     targetCount: number;
     groupCount: number;
-    activeTarget?: BrowserTargetFocus;
-    lastFrameAt?: number;
+    snapshotVersion?: number;
+    capturedAt?: number;
+    targets: ManifestTargetView[];
+    groups: ManifestGroupView[];
+    activeTargetRef?: string;
   };
-  scenarios: ScenarioDefinition[];
-  selectedScenarioId: string;
+  scenarios: StudioScenarioItem[];
+  selectedScenarioKey: string;
   run: {
     id?: string;
     status: RunStatus;
-    scenarioId?: string;
+    scenarioKey?: string;
+    scenarioName?: string;
+    /** Exact validated document used for this run, including unsaved draft edits. */
+    document?: Scenario;
     startedAt?: number;
     finishedAt?: number;
     currentStepIndex: number;
+    currentStepId?: string;
     steps: StepRunState[];
     error?: string;
   };
+  evidence: {
+    resolution?: ResolutionEvidence;
+    artifacts: ArtifactView[];
+  };
   diagnostics: {
     console: Array<{ level: string; text: string; timestamp: number }>;
-    network: Array<{ method: string; url: string; status?: number; failureText?: string; timestamp: number }>;
+    network: Array<{
+      method: string;
+      url: string;
+      status?: number;
+      failureText?: string;
+      timestamp: number;
+    }>;
   };
   activity: ActivityEntry[];
 }
 
-export interface PreviewFrame {
-  dataUrl: string;
-  width: number;
-  height: number;
-  timestamp: number;
+export type BrowserHistoryAction = 'back' | 'forward' | 'reload';
+
+export interface SaveScenarioRequest {
+  scenario: Scenario;
+  /** Existing relative file path or a new `*.agrune.json` name. */
+  fileName?: string;
 }
 
-export type BrowserHistoryAction = 'back' | 'forward' | 'reload';
+export interface RunScenarioRequest {
+  scenario: Scenario;
+  /** Library row the draft originated from. Omit for a new, unsaved draft. */
+  scenarioKey?: string;
+}
+
+export interface OpenArtifactRequest {
+  path: string;
+  mode: 'open' | 'reveal';
+}
 
 export interface StudioApi {
   getState: () => Promise<StudioState>;
+  chooseWorkspace: () => Promise<StudioState>;
+  openWorkspace: (workspacePath: string) => Promise<StudioState>;
   navigate: (url: string) => Promise<StudioState>;
   history: (action: BrowserHistoryAction) => Promise<StudioState>;
-  selectScenario: (scenarioId: string) => Promise<StudioState>;
-  runScenario: (scenarioId: string) => Promise<StudioState>;
+  selectScenario: (scenarioKey: string) => Promise<StudioState>;
+  saveScenario: (request: SaveScenarioRequest) => Promise<StudioState>;
+  runScenario: (request: RunScenarioRequest) => Promise<StudioState>;
   pauseRun: () => Promise<StudioState>;
   resumeRun: () => Promise<StudioState>;
-  stepRun: (scenarioId: string) => Promise<StudioState>;
+  stepRun: (request: RunScenarioRequest) => Promise<StudioState>;
   stopRun: () => Promise<StudioState>;
+  showBrowser: () => Promise<StudioState>;
+  highlightTarget: (targetRef: string) => Promise<StudioState>;
+  openArtifact: (request: OpenArtifactRequest) => Promise<void>;
   refresh: () => Promise<StudioState>;
-  previewClick: (point: { x: number; y: number }) => Promise<void>;
-  previewKey: (payload: { key: string; text?: string }) => Promise<void>;
   onState: (listener: (state: StudioState) => void) => () => void;
-  onFrame: (listener: (frame: PreviewFrame) => void) => () => void;
 }

@@ -2,36 +2,81 @@
 
 ## Product sentence
 
-Agrune Studio is a local desktop control room where developers can run, observe, pause, and diagnose manifest-driven browser tests without leaving the browser session the bot actually controls.
+Agrune Studio is a local semantic QA workbench where developers author strict `agrune.scenario/v1` flows, run them through Agrune in a real headed Chromium window, and inspect the manifest perception, target resolution, timeline, and evidence behind every step.
+
+Its core loop is:
+
+```text
+Author → Run → Observe → Diagnose → Edit the executed draft → Replay
+```
+
+## Responsibility split
+
+- **The real browser is the execution surface.** The tested page, target highlights, and direct human input stay in external headed Chromium.
+- **Studio is the semantic workbench.** It owns scenario authoring, run controls, progress, manifest-oriented inspection, diagnostics, and artifact references.
+- **Agrune owns application meaning.** Manifest target discovery, target resolution, and semantic browser actions remain in Agrune core.
+- **Playwright owns browser mechanics.** Navigation, DOM interaction, tracing, screenshots, console, and network signals come from one Studio-owned session.
+
+Studio does not embed a webview, stream a JPEG preview, or maintain a second representation of the tested page.
 
 ## Principles
 
-1. **The browser is the product.** The largest surface is always the exact Playwright page under test.
-2. **No split reality.** Preview, bot actions, manual takeover, console, and network signals come from one `BrowserSession`.
-3. **Progress is legible.** A run must always expose its current step, target, elapsed time, and terminal result.
-4. **Human intervention is first-class.** Pause, step, resume, stop, and direct control are core controls, not debug extras.
-5. **Local by default.** The Electron main process owns browser state and filesystem authority; the renderer receives a narrow typed API.
-6. **Manifest truth stays in Agrune.** Studio orchestrates and visualizes the engine. It does not duplicate resolution or action logic.
+1. **One execution session.** Scenario actions, manifest snapshots, target highlights, manual takeover, console, network, screenshots, and traces originate from the same Studio-owned `BrowserSession`.
+2. **Actions are semantic; outcomes can be independent.** Interactive actions address manifest refs. Closed assertions can check URL, text, target state, console, and network outcomes independently of the action locator.
+3. **Pure data at the boundary.** `agrune.scenario/v1` contains no arbitrary JavaScript. Builder and JSON mode pass through the same strict validator before save or run.
+4. **Progress is legible.** A run always exposes the active semantic step, target, elapsed time, result, and first failure.
+5. **Human intervention is first-class.** Pause, step, resume, and stop operate at semantic step boundaries. Takeover pauses an active run and foregrounds the real browser.
+6. **Local authority stays narrow.** Electron main owns the browser and filesystem; the sandboxed renderer receives only a typed context-bridge API.
+7. **Manifest truth stays in Agrune.** Studio orchestrates and visualizes the engine instead of duplicating selector resolution or action logic.
+8. **Writes are intentional and bounded.** Workspace-relative paths cannot escape the selected root, invalid configuration fails closed, and an unsaved run draft cannot inherit an unrelated scenario file identity.
+9. **Security claims match the implementation.** Text summaries avoid literal fill/type values, while run logs, traces, and screenshots are explicitly treated as potentially sensitive.
 
 ## Information architecture
 
-- **Rail:** product modes — Runs, Recorder, Manifests, Artifacts.
-- **Scenario library:** workspace context, scenario selection, manifest coverage.
-- **Browser stage:** navigation, live preview, target focus, direct takeover.
-- **Run dock:** progress and the controls that change execution state.
-- **Inspector:** scenario intent, ordered steps, activity, console, network.
+- **Rail:** Scenarios, manifest status/refresh, artifacts/evidence, and workspace selection.
+- **Library:** built-in and workspace scenarios, filtering, and current workspace issues or unresolved gaps.
+- **Workbench:** selected scenario, ordered semantic steps, and the live agent timeline.
+- **Command dock:** Run, Pause/Resume, Step, Stop, Open browser, and Take over.
+- **Inspector:** Perception, Resolution, and Evidence.
+- **Editor:** structured Builder and canonical JSON views of the same validated document.
+- **External Chromium:** the real page, target highlights, and direct human input.
 
-## V1 boundary
+## Implemented V1 boundary
 
-This baseline intentionally implements the complete vertical slice before widening the product:
+The current vertical slice includes:
 
-- packaged Electron application;
-- directly embedded Agrune `BrowserSession`;
-- exact-page screenshot stream;
-- manifest target highlighting;
-- runnable example scenarios;
-- pause, resume, single-step, stop;
-- manual pointer and keyboard takeover;
-- console and network diagnostics.
+- a packaged Electron application with bundled Playwright Chromium;
+- one Studio-owned headed Agrune `BrowserSession`;
+- a real external browser with no screen mirror or webview;
+- a workspace picker and versioned `.agrune/workspace.json` configuration;
+- safe, atomic workspace scenario persistence;
+- strict `agrune.scenario/v1` validation and deterministic serialization;
+- read-only built-in starter scenarios and editable workspace scenarios;
+- structured Builder and raw JSON editing;
+- manifest-ref action execution and closed declarative assertions;
+- run, pause, resume, semantic single-step, and stop;
+- target focus and highlight in the real browser;
+- direct human takeover by pausing and foregrounding Chromium;
+- manifest perception, resolution summaries, and a live activity timeline;
+- live console and network diagnostics;
+- private, atomic per-run logs plus Playwright trace capture and failure screenshots for configured workspaces;
+- first-failure stop with all remaining steps marked skipped;
+- exact executed-draft retention so diagnosis and repair never silently revert to the persisted document.
 
-Recorder, manifest editing, project discovery, persistent run history, trace viewer integration, and signed distribution follow after this slice is proven stable.
+## Explicit non-goals for this slice
+
+V1 captures useful execution evidence, but it does not yet provide:
+
+- browser-interaction recording or recorded-action-to-manifest-ref mapping;
+- manifest target creation, editing, selector-ladder repair, or source-file writes;
+- a full resolver-rung telemetry viewer;
+- a connected secret vault for `secretRef` execution;
+- Studio-side run-history rehydration or an artifact catalog across restarts (per-run files remain on disk);
+- an embedded Playwright Trace Viewer;
+- shared daemon/session attachment with other Agrune clients;
+- CI adapters or Playwright Test reporting UI;
+- signed scenario packs or distribution workflows.
+
+## Success criterion
+
+A developer should be able to express a small, reviewable QA flow in Agrune language, watch it operate the real application, understand the first failure without reading raw DOM or selector code, repair the exact draft that failed, and replay it with confidence that Studio did not mutate an unrelated file or run against stale workspace state.

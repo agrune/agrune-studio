@@ -1,65 +1,149 @@
-import type { ScenarioDefinition } from './contracts';
+import type { Scenario } from '../scenario';
 
 export const DEMO_URL = 'http://127.0.0.1:4178';
 
-export const DEFAULT_SCENARIOS: ScenarioDefinition[] = [
+const DEMO_MANIFEST = {
+  schemaVersion: 3 as const,
+  origin: DEMO_URL,
+};
+
+const NAVER_SEARCH_FALLBACK = {
+  by: 'role' as const,
+  role: 'combobox',
+  name: '검색어를 입력해 주세요',
+  exact: false,
+};
+
+/**
+ * Read-only starter documents. They make Studio useful before a workspace has
+ * persisted any scenarios, but are never written into the demo repository
+ * until the user explicitly saves a draft.
+ */
+export const DEFAULT_SCENARIOS: Scenario[] = [
   {
+    schema: 'agrune.scenario/v1',
     id: 'manifest-health',
-    title: 'Manifest health check',
-    intent: 'Verify that the app exposes a usable manifest and that member search remains operable.',
+    name: 'Manifest health check',
+    description: 'Verify that the app exposes a usable manifest and that member search remains operable.',
     tags: ['smoke', 'manifest'],
-    estimatedMs: 4200,
+    manifest: DEMO_MANIFEST,
+    url: DEMO_URL,
     steps: [
-      { id: 'health-open', kind: 'open', label: 'Open demo workspace', url: DEMO_URL },
-      { id: 'health-board', kind: 'expect-target', label: 'Confirm board navigation target', target: 'nav_board_tab' },
-      { id: 'health-members', kind: 'click', label: 'Open members', target: 'nav_members_tab' },
-      { id: 'health-search-ready', kind: 'expect-target', label: 'Confirm member search target', target: 'member_search_input' },
-      { id: 'health-search', kind: 'fill', label: 'Search for Alice', target: 'member_search_input', value: 'Alice Chen' },
-      { id: 'health-result', kind: 'expect-text', label: 'Confirm filtered result', value: 'Alice Chen' },
+      { id: 'health-board', assert: 'targetVisible', label: 'Board navigation is available', ref: 'nav_board_tab' },
+      { id: 'health-members', do: 'click', label: 'Open members', ref: 'nav_members_tab' },
+      {
+        id: 'health-search-ready',
+        assert: 'targetVisible',
+        label: 'Member search is available',
+        ref: 'member_search_input',
+      },
+      {
+        id: 'health-search',
+        do: 'fill',
+        label: 'Search for Alice',
+        ref: 'member_search_input',
+        value: 'Alice Chen',
+      },
+      { id: 'health-result', assert: 'textPresent', label: 'Filtered member is visible', value: 'Alice Chen' },
     ],
   },
   {
+    schema: 'agrune.scenario/v1',
     id: 'task-entry',
-    title: 'Task entry path',
-    intent: 'Exercise the first task creation step without mutating the board.',
+    name: 'Task entry path',
+    description: 'Exercise the first task creation step without mutating the board.',
     tags: ['critical', 'form'],
-    estimatedMs: 3600,
+    manifest: DEMO_MANIFEST,
+    url: DEMO_URL,
     steps: [
-      { id: 'task-open', kind: 'open', label: 'Open demo workspace', url: DEMO_URL },
-      { id: 'task-board', kind: 'click', label: 'Reset to board', target: 'nav_board_tab' },
-      { id: 'task-new', kind: 'click', label: 'Open new task wizard', target: 'board_new_task_button' },
-      { id: 'task-title-ready', kind: 'expect-target', label: 'Confirm title field', target: 'wizard_title_input' },
+      { id: 'task-board', do: 'click', label: 'Reset to board', ref: 'nav_board_tab' },
+      { id: 'task-new', do: 'click', label: 'Open new task wizard', ref: 'board_new_task_button' },
+      { id: 'task-title-ready', assert: 'targetVisible', label: 'Title field is available', ref: 'wizard_title_input' },
       {
         id: 'task-title',
-        kind: 'fill',
+        do: 'fill',
         label: 'Enter regression title',
-        target: 'wizard_title_input',
+        ref: 'wizard_title_input',
         value: 'Regression guardrail check',
       },
-      { id: 'task-next-ready', kind: 'expect-target', label: 'Confirm next action', target: 'wizard_next_button' },
-      { id: 'task-close', kind: 'click', label: 'Close task wizard', target: 'wizard_close_button' },
+      { id: 'task-next-ready', assert: 'targetVisible', label: 'Next action is available', ref: 'wizard_next_button' },
+      { id: 'task-close', do: 'click', label: 'Close task wizard', ref: 'wizard_close_button' },
     ],
   },
   {
+    schema: 'agrune.scenario/v1',
     id: 'navigation-sweep',
-    title: 'Workspace navigation sweep',
-    intent: 'Traverse the high-level work areas and verify that their manifest routes stay resolvable.',
+    name: 'Workspace navigation sweep',
+    description: 'Traverse the high-level work areas and verify that their manifest routes stay resolvable.',
     tags: ['navigation', 'regression'],
-    estimatedMs: 5000,
+    manifest: DEMO_MANIFEST,
+    url: DEMO_URL,
     steps: [
-      { id: 'nav-open', kind: 'open', label: 'Open demo workspace', url: DEMO_URL },
-      { id: 'nav-docs', kind: 'click', label: 'Open documents', target: 'nav_docs_tab' },
-      { id: 'nav-doc-ready', kind: 'expect-target', label: 'Confirm document controls', target: 'doc_refresh_button' },
-      { id: 'nav-workflow', kind: 'click', label: 'Open workflow', target: 'nav_workflow_tab' },
-      { id: 'nav-canvas-ready', kind: 'expect-target', label: 'Confirm workflow canvas', target: 'workflow_canvas_pane' },
-      { id: 'nav-messenger', kind: 'click', label: 'Open messenger', target: 'nav_messenger_tab' },
+      { id: 'nav-docs', do: 'click', label: 'Open documents', ref: 'nav_docs_tab' },
+      { id: 'nav-doc-ready', assert: 'targetVisible', label: 'Document controls are available', ref: 'doc_refresh_button' },
+      { id: 'nav-workflow', do: 'click', label: 'Open workflow', ref: 'nav_workflow_tab' },
+      { id: 'nav-canvas-ready', assert: 'targetVisible', label: 'Workflow canvas is available', ref: 'workflow_canvas_pane' },
+      { id: 'nav-messenger', do: 'click', label: 'Open messenger', ref: 'nav_messenger_tab' },
       {
         id: 'nav-conversation',
-        kind: 'click',
+        do: 'click',
         label: 'Open Alice conversation',
-        target: 'messenger_conversations[key=member-1].messenger_conversation',
+        ref: 'messenger_conversations[key=member-1].messenger_conversation',
       },
-      { id: 'nav-message-ready', kind: 'expect-target', label: 'Confirm message input', target: 'messenger_input' },
+      { id: 'nav-message-ready', assert: 'targetVisible', label: 'Message input is available', ref: 'messenger_input' },
+    ],
+  },
+  {
+    schema: 'agrune.scenario/v1',
+    id: 'naver-weather-search',
+    name: 'Naver weather search',
+    description: 'Search Naver for Seoul weather and verify the resulting weather page.',
+    tags: ['search', 'weather'],
+    manifest: { schemaVersion: 3 },
+    url: 'https://www.naver.com',
+    steps: [
+      {
+        id: 'naver-search-ready',
+        do: 'waitFor',
+        label: 'Search input is ready',
+        ref: 'naver_search_input',
+        state: 'visible',
+        playwrightFallback: NAVER_SEARCH_FALLBACK,
+      },
+      {
+        id: 'naver-search-fill',
+        do: 'fill',
+        label: 'Enter Seoul weather',
+        ref: 'naver_search_input',
+        value: '서울 날씨',
+        playwrightFallback: NAVER_SEARCH_FALLBACK,
+      },
+      {
+        id: 'naver-search-submit',
+        do: 'press',
+        label: 'Submit weather search',
+        ref: 'naver_search_input',
+        key: 'Enter',
+        playwrightFallback: NAVER_SEARCH_FALLBACK,
+      },
+      {
+        id: 'naver-search-url',
+        assert: 'urlContains',
+        label: 'Search results are open',
+        value: 'search.naver.com/search.naver',
+      },
+      {
+        id: 'naver-search-title',
+        assert: 'titleContains',
+        label: 'Search title contains Seoul weather',
+        value: '서울 날씨',
+      },
+      {
+        id: 'naver-search-weather',
+        assert: 'textPresent',
+        label: 'Today weather section is visible',
+        value: '오늘의 날씨',
+      },
     ],
   },
 ];

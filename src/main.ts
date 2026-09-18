@@ -1,8 +1,15 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
-import { StudioController } from './main/studio-controller';
-import type { BrowserHistoryAction } from './shared/contracts';
+import { resolveArtifactFile } from './main/artifact-open';
+import { StudioController, resolveDefaultWorkspaceRoot } from './main/studio-controller';
+import type {
+  BrowserHistoryAction,
+  OpenArtifactRequest,
+  RunScenarioRequest,
+  SaveScenarioRequest,
+} from './shared/contracts';
 
 if (started) app.quit();
 
@@ -29,19 +36,74 @@ function getController(): StudioController {
   return controller;
 }
 
+function defaultWorkspaceRoot(): string {
+  return resolveDefaultWorkspaceRoot({
+    isPackaged: app.isPackaged,
+    requested: process.env.AGRUNE_STUDIO_WORKSPACE,
+    appPath: app.getAppPath(),
+    homePath: app.getPath('home'),
+    userDataPath: app.getPath('userData'),
+    pathExists: existsSync,
+  });
+}
+
+function isOpenArtifactRequest(value: unknown): value is OpenArtifactRequest {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<OpenArtifactRequest>;
+  return typeof candidate.path === 'string' && (candidate.mode === 'open' || candidate.mode === 'reveal');
+}
+
 function registerIpc(): void {
   ipcMain.handle('studio:get-state', () => getController().getState());
+  ipcMain.handle('studio:choose-workspace', async () => {
+    const options: Electron.OpenDialogOptions = {
+      title: 'Open Agrune workspace',
+      properties: ['openDirectory'],
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    const selected = result.filePaths[0];
+    return result.canceled || !selected ? getController().getState() : getController().openWorkspace(selected);
+  });
+  ipcMain.handle('studio:open-workspace', (_event, workspacePath: string) => getController().openWorkspace(workspacePath));
   ipcMain.handle('studio:navigate', (_event, url: string) => getController().navigate(url));
   ipcMain.handle('studio:history', (_event, action: BrowserHistoryAction) => getController().history(action));
-  ipcMain.handle('studio:select-scenario', (_event, scenarioId: string) => getController().selectScenario(scenarioId));
-  ipcMain.handle('studio:run', (_event, scenarioId: string) => getController().runScenario(scenarioId));
+  ipcMain.handle('studio:select-scenario', (_event, scenarioKey: string) => getController().selectScenario(scenarioKey));
+  ipcMain.handle('studio:save-scenario', (_event, request: SaveScenarioRequest) => getController().saveScenario(request));
+  ipcMain.handle('studio:run', (_event, request: RunScenarioRequest) => getController().runScenario(request));
   ipcMain.handle('studio:pause', () => getController().pauseRun());
   ipcMain.handle('studio:resume', () => getController().resumeRun());
-  ipcMain.handle('studio:step', (_event, scenarioId: string) => getController().stepRun(scenarioId));
+  ipcMain.handle('studio:step', (_event, request: RunScenarioRequest) => getController().stepRun(request));
   ipcMain.handle('studio:stop', () => getController().stopRun());
+  ipcMain.handle('studio:show-browser', () => getController().showBrowser());
+  ipcMain.handle('studio:highlight-target', (_event, targetRef: string) => getController().highlightTarget(targetRef));
+  ipcMain.handle('studio:open-artifact', async (_event, request: unknown) => {
+    if (!isOpenArtifactRequest(request)) throw new Error('Invalid artifact open request');
+
+    const before = getController().getState().workspace;
+    const artifactPath = await resolveArtifactFile({
+      workspaceRoot: before.path,
+      artifactDir: before.artifactDir,
+      candidatePath: request.path,
+    });
+
+    // Do not open a file if a concurrent workspace switch made the validation
+    // result stale while real paths were being resolved.
+    const after = getController().getState().workspace;
+    if (after.path !== before.path || after.artifactDir !== before.artifactDir) {
+      throw new Error('Artifact cannot be opened because the workspace changed');
+    }
+
+    if (request.mode === 'reveal') {
+      shell.showItemInFolder(artifactPath);
+      return;
+    }
+
+    const errorMessage = await shell.openPath(artifactPath);
+    if (errorMessage) throw new Error(`Artifact could not be opened: ${errorMessage}`);
+  });
   ipcMain.handle('studio:refresh', () => getController().refresh());
-  ipcMain.handle('studio:preview-click', (_event, point: { x: number; y: number }) => getController().previewClick(point));
-  ipcMain.handle('studio:preview-key', (_event, payload: { key: string; text?: string }) => getController().previewKey(payload));
 }
 
 async function createWindow(): Promise<void> {
@@ -70,15 +132,10 @@ async function createWindow(): Promise<void> {
     if (!url.startsWith(allowed)) event.preventDefault();
   });
 
-  controller = new StudioController(
-    (state) => emit('studio:state', state),
-    (frame) => emit('studio:frame', frame),
-  );
+  controller = new StudioController((state) => emit('studio:state', state), {
+    defaultWorkspaceRoot: defaultWorkspaceRoot(),
+  });
   mainWindow.once('ready-to-show', () => mainWindow?.show());
-  mainWindow.on('focus', () => controller?.setPreviewActive(true));
-  mainWindow.on('blur', () => controller?.setPreviewActive(false));
-  mainWindow.on('minimize', () => controller?.setPreviewActive(false));
-  mainWindow.on('restore', () => controller?.setPreviewActive(true));
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
